@@ -1,22 +1,34 @@
 import { system, world } from '@minecraft/server';
 
 const GIFT_EVENT = 'b2:gift';
+const LIKES_EVENT = 'b2:likes';
+const ACTION_EVENT = 'b2:action';
 const ROSE_NAMES = new Set(['rose', 'rosa']);
+const POPULAR_NAMES = new Set(['popular']);
+const LOVE_NAMES = new Set(['love me', 'quiereme', 'quiéreme']);
+const HEART_NAMES = new Set(['heart', 'corazon', 'corazón']);
+const CAPYBARA_NAMES = new Set(['capybara']);
 
-function spawnZombies(count = 1) {
-  const players = world.getAllPlayers();
-  if (players.length === 0) return;
+let totalLikes = 0;
+let triggered50 = 0;
+let triggered100 = 0;
 
-  const player = players[0];
-  const base = player.location;
-  const dimension = player.dimension;
+function player() {
+  return world.getAllPlayers()[0];
+}
 
-  for (let i = 0; i < Math.min(Math.max(count, 1), 20); i++) {
+function spawn(entityId, count) {
+  const target = player();
+  if (!target) return;
+  const amount = Math.max(0, Math.min(Math.floor(Number(count) || 0), 100));
+  const dimension = target.dimension;
+  const base = target.location;
+
+  for (let i = 0; i < amount; i++) {
     const angle = Math.random() * Math.PI * 2;
-    const radius = 3 + Math.random() * 4;
-
+    const radius = 3 + Math.random() * 5;
     system.runTimeout(() => {
-      dimension.spawnEntity('minecraft:zombie', {
+      dimension.spawnEntity(entityId, {
         x: base.x + Math.cos(angle) * radius,
         y: base.y,
         z: base.z + Math.sin(angle) * radius
@@ -25,24 +37,73 @@ function spawnZombies(count = 1) {
   }
 }
 
-system.afterEvents.scriptEventReceive.subscribe((event) => {
-  if (event.id !== GIFT_EVENT) return;
+function give(itemId, count) {
+  const target = player();
+  if (!target) return;
+  target.runCommand(`give @s ${itemId} ${Math.max(1, Math.floor(Number(count) || 1))}`);
+}
 
-  let data = {};
-  try {
-    data = JSON.parse(event.message || '{}');
-  } catch {
-    console.warn('[B2] Payload de regalo inválido.');
-    return;
+function chargedCreepers(count) {
+  const target = player();
+  if (!target) return;
+  const dimension = target.dimension;
+  const base = target.location;
+  const amount = Math.min(Math.max(Math.floor(Number(count) || 0), 0), 50);
+
+  for (let i = 0; i < amount; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const radius = 4 + Math.random() * 5;
+    system.runTimeout(() => {
+      const creeper = dimension.spawnEntity('minecraft:creeper', {
+        x: base.x + Math.cos(angle) * radius,
+        y: base.y,
+        z: base.z + Math.sin(angle) * radius
+      });
+      try { creeper.triggerEvent('minecraft:become_charged'); } catch {}
+    }, i * 2);
+  }
+}
+
+system.afterEvents.scriptEventReceive.subscribe((event) => {
+  if (event.id === GIFT_EVENT) {
+    let data = {};
+    try { data = JSON.parse(event.message || '{}'); } catch { return; }
+    const name = String(data.giftName || '').trim().toLowerCase();
+    const repeat = Math.max(1, Math.floor(Number(data.repeatCount) || 1));
+
+    if (ROSE_NAMES.has(name)) spawn('minecraft:zombie', 2 * repeat);
+    else if (POPULAR_NAMES.has(name)) spawn('minecraft:spider', 5 * repeat);
+    else if (LOVE_NAMES.has(name)) spawn('minecraft:witch', 5 * repeat);
+    else if (HEART_NAMES.has(name)) spawn('minecraft:skeleton', 10 * repeat);
+    else if (CAPYBARA_NAMES.has(name)) chargedCreepers(10 * repeat);
   }
 
-  const giftName = String(data.giftName || '').trim().toLowerCase();
-  if (!ROSE_NAMES.has(giftName)) return;
+  if (event.id === LIKES_EVENT) {
+    let data = {};
+    try { data = JSON.parse(event.message || '{}'); } catch { return; }
+    const nextLikes = Math.max(totalLikes, Math.floor(Number(data.totalLikes) || 0));
+    const new50 = Math.floor(nextLikes / 50);
+    const new100 = Math.floor(nextLikes / 100);
 
-  const count = Number(data.repeatCount || 1);
-  spawnZombies(count);
+    // Acumulativo: cada múltiplo alcanzado vuelve a activar el reto.
+    while (triggered50 < new50) {
+      triggered50++;
+      spawn('minecraft:creeper', 1);
+    }
+    while (triggered100 < new100) {
+      triggered100++;
+      spawn('minecraft:creeper', 2);
+    }
+    totalLikes = nextLikes;
+    world.sendMessage(`§e[B2] §fLikes acumulados: §b${totalLikes}`);
+  }
 
-  world.sendMessage(`§a🌹 Rosa recibida §7→ §2${Math.min(Math.max(count, 1), 20)} zombie(s)`);
+  if (event.id === ACTION_EVENT) {
+    let data = {};
+    try { data = JSON.parse(event.message || '{}'); } catch { return; }
+    if (data.action === 'follow') give('minecraft:tnt', 5);
+    if (data.action === 'share') give('minecraft:enchanted_golden_apple', 1);
+  }
 });
 
-world.sendMessage('§6[B2] §fTikTok Zombie Add-On cargado.');
+world.sendMessage('§6[B2] §fRetos TikTok cargados.');
