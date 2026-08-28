@@ -5,6 +5,7 @@ import { TikTokLiveConnection, WebcastEvent, ControlEvent } from 'tiktok-live-co
 const TIKTOK_USERNAME = (process.env.TIKTOK_USERNAME || 'toshi.bs3').replace(/^@/, '');
 const MC_PORT = Number(process.env.MC_PORT || 3000);
 const ROSE_NAMES = new Set(['rose', 'rosa']);
+const RETRY_MS = 10_000;
 
 const clients = new Set();
 const wss = new WebSocketServer({ port: MC_PORT });
@@ -27,10 +28,14 @@ function minecraftCommand(socket, commandLine) {
   }));
 }
 
-function sendScriptEvent(id, payload) {
+function sendScriptEventTo(socket, id, payload) {
   const json = JSON.stringify(payload);
+  minecraftCommand(socket, `scriptevent ${id} ${json}`);
+}
+
+function sendScriptEvent(id, payload) {
   for (const socket of clients) {
-    minecraftCommand(socket, `scriptevent ${id} ${json}`);
+    sendScriptEventTo(socket, id, payload);
   }
 }
 
@@ -50,15 +55,15 @@ function getGiftId(data) {
 
 wss.on('connection', socket => {
   clients.add(socket);
-  console.log('Minecraft conectado.');
+  console.log(`Minecraft conectado (${clients.size}).`);
 
-  sendScriptEvent('tntcoin:connected', {
+  sendScriptEventTo(socket, 'tntcoin:connected', {
     tiktokUsername: TIKTOK_USERNAME
   });
 
   socket.on('close', () => {
     clients.delete(socket);
-    console.log('Minecraft desconectado.');
+    console.log(`Minecraft desconectado (${clients.size}).`);
   });
 
   socket.on('error', error => {
@@ -71,16 +76,55 @@ const tiktok = new TikTokLiveConnection(TIKTOK_USERNAME, {
   enableExtendedGiftInfo: true
 });
 
+let connectedToTikTok = false;
+let connectingToTikTok = false;
+let retryTimer = null;
+
+function scheduleTikTokRetry() {
+  if (retryTimer || connectedToTikTok || connectingToTikTok) return;
+
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    connectToTikTok();
+  }, RETRY_MS);
+
+  console.log(`TikTok offline. Reintentando en ${RETRY_MS / 1000}s...`);
+}
+
+async function connectToTikTok() {
+  if (connectedToTikTok || connectingToTikTok) return;
+
+  connectingToTikTok = true;
+  try {
+    await tiktok.connect();
+  } catch (error) {
+    console.error('No se pudo conectar a TikTok LIVE:', error?.message || error);
+    scheduleTikTokRetry();
+  } finally {
+    connectingToTikTok = false;
+  }
+}
+
 tiktok.on(ControlEvent.CONNECTED, state => {
+  connectedToTikTok = true;
   console.log(`TikTok conectado: @${TIKTOK_USERNAME} | roomId: ${state.roomId}`);
 });
 
 tiktok.on(ControlEvent.ERROR, ({ info, exception }) => {
   console.error('Error TikTok:', info || exception?.message || exception);
+  if (!connectedToTikTok) scheduleTikTokRetry();
 });
 
 tiktok.on(ControlEvent.DISCONNECTED, () => {
+  connectedToTikTok = false;
   console.log('TikTok desconectado.');
+  scheduleTikTokRetry();
+});
+
+tiktok.on(WebcastEvent.STREAM_END, () => {
+  connectedToTikTok = false;
+  console.log('El LIVE terminó. Esperando el próximo LIVE...');
+  scheduleTikTokRetry();
 });
 
 tiktok.on(WebcastEvent.GIFT, data => {
@@ -119,9 +163,4 @@ wss.on('listening', () => {
 
 console.log('B2 - TikTok LIVE → Minecraft Bedrock');
 console.log('Iniciando conexión con TikTok...');
-
-tiktok.connect().catch(error => {
-  console.error('No se pudo conectar a TikTok LIVE.');
-  console.error(error?.message || error);
-  console.error('Comprueba que la cuenta esté LIVE y que el usuario sea correcto.');
-});
+connectToTikTok();
