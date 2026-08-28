@@ -51,12 +51,6 @@ function give(itemId, count) {
   target.runCommand(`give @s ${itemId} ${Math.max(1, Math.floor(Number(count) || 1))}`);
 }
 
-function queueChargedCreepers(count) {
-  // Se usa una cola separada para poder crear cualquier cantidad sin límite artificial.
-  queueSpawn('minecraft:creeper', count);
-  // El evento de carga se aplica a los creepers recién creados mediante el intervalo inferior.
-}
-
 const chargedQueue = { count: 0 };
 function processChargedQueue() {
   const target = player();
@@ -79,6 +73,23 @@ function processChargedQueue() {
 
 system.runInterval(processChargedQueue, 2);
 
+// TNTCoin muestra los eventos mediante títulos/subtítulos configurables.
+// B2 usa el mismo concepto: evento grande en pantalla, sin llenar el chat.
+function showEvent(title, subtitle = '') {
+  const target = player();
+  if (!target) return;
+  try {
+    target.onScreenDisplay.setTitle(title, {
+      subtitle,
+      fadeInDuration: 2,
+      stayDuration: 30,
+      fadeOutDuration: 8
+    });
+  } catch (error) {
+    console.warn(`[B2] Error mostrando evento: ${error}`);
+  }
+}
+
 system.afterEvents.scriptEventReceive.subscribe((event) => {
   let data = {};
   try { data = JSON.parse(event.message || '{}'); } catch { return; }
@@ -86,26 +97,50 @@ system.afterEvents.scriptEventReceive.subscribe((event) => {
   if (event.id === GIFT_EVENT) {
     const name = String(data.giftName || '').trim().toLowerCase();
     const repeat = Math.max(1, Math.floor(Number(data.repeatCount) || 1));
-    if (ROSE_NAMES.has(name)) queueSpawn('minecraft:zombie', 2 * repeat);
-    else if (POPULAR_NAMES.has(name)) queueSpawn('minecraft:spider', 5 * repeat);
-    else if (LOVE_NAMES.has(name)) queueSpawn('minecraft:witch', 5 * repeat);
-    else if (HEART_NAMES.has(name)) queueSpawn('minecraft:skeleton', 10 * repeat);
-    else if (CAPYBARA_NAMES.has(name)) chargedQueue.count += 10 * repeat;
+    if (ROSE_NAMES.has(name)) {
+      queueSpawn('minecraft:zombie', 2 * repeat);
+      showEvent('🌹 ROSA', `+${2 * repeat} Zombies`);
+    } else if (POPULAR_NAMES.has(name)) {
+      queueSpawn('minecraft:spider', 5 * repeat);
+      showEvent('🎁 POPULAR', `+${5 * repeat} Arañas`);
+    } else if (LOVE_NAMES.has(name)) {
+      queueSpawn('minecraft:witch', 5 * repeat);
+      showEvent('🎁 QUIÉREME', `+${5 * repeat} Brujas`);
+    } else if (HEART_NAMES.has(name)) {
+      queueSpawn('minecraft:skeleton', 10 * repeat);
+      showEvent('❣️ CORAZÓN', `+${10 * repeat} Esqueletos`);
+    } else if (CAPYBARA_NAMES.has(name)) {
+      chargedQueue.count += 10 * repeat;
+      showEvent('🦫 CAPIBARA', `+${10 * repeat} Creepers cargados`);
+    }
   }
 
   if (event.id === LIKES_EVENT) {
     const nextLikes = Math.max(totalLikes, Math.floor(Number(data.totalLikes) || 0));
     const new50 = Math.floor(nextLikes / 50);
     const new100 = Math.floor(nextLikes / 100);
-    while (triggered50 < new50) { triggered50++; queueSpawn('minecraft:creeper', 1); }
-    while (triggered100 < new100) { triggered100++; queueSpawn('minecraft:creeper', 2); }
+    while (triggered50 < new50) {
+      triggered50++;
+      queueSpawn('minecraft:creeper', 1);
+      showEvent('👍 50 LIKES', '+1 Creeper');
+    }
+    while (triggered100 < new100) {
+      triggered100++;
+      queueSpawn('minecraft:creeper', 2);
+      showEvent('👍 100 LIKES', '+2 Creepers');
+    }
     totalLikes = nextLikes;
-    world.sendMessage(`§e[B2] §fLikes acumulados: §b${totalLikes}`);
   }
 
   if (event.id === ACTION_EVENT) {
-    if (data.action === 'follow') give('minecraft:tnt', 5);
-    if (data.action === 'share') give('minecraft:enchanted_golden_apple', 1);
+    if (data.action === 'follow') {
+      give('minecraft:tnt', 5);
+      showEvent('➕ SEGUIR', '+5 TNT');
+    }
+    if (data.action === 'share') {
+      give('minecraft:enchanted_golden_apple', 1);
+      showEvent('↗️ COMPARTIR', '+1 Manzana encantada');
+    }
   }
 });
 
