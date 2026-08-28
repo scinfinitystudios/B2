@@ -1,0 +1,46 @@
+name: Build B2 mcaddon
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'B2Addon/**'
+      - '.github/workflows/build-mcaddon.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate addon structure
+        run: |
+          test -f B2Addon/manifest.json
+          test -f B2Addon/scripts/main.js
+          python - <<'PY'
+          import json
+          with open('B2Addon/manifest.json', encoding='utf-8') as f:
+              m = json.load(f)
+          assert m['format_version'] == 2
+          assert any(x.get('type') == 'script' and x.get('entry') == 'scripts/main.js' for x in m['modules'])
+          print('B2Addon manifest OK')
+          PY
+
+      - name: Package mcpack and mcaddon
+        run: |
+          cd B2Addon
+          zip -r ../B2Addon.mcpack . -x '*.DS_Store'
+          cd ..
+          zip -j B2Addon.mcaddon B2Addon.mcpack
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: B2Addon-mcaddon
+          path: B2Addon.mcaddon
+          if-no-files-found: error
