@@ -1,0 +1,14 @@
+{
+  "name": "b2-tiktok-minecraft-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Puente TikTok LIVE -> Minecraft Bedrock para TNTCoin.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "tiktok-live-connector": "2.4.4",
+    "ws": "8.18.3"
+  }
+}
