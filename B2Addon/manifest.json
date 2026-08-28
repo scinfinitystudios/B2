@@ -1,0 +1,25 @@
+{
+  "format_version": 2,
+  "header": {
+    "name": "B2 TikTok Zombie Add-On",
+    "description": "Convierte regalos de TikTok LIVE en zombies en Minecraft Bedrock.",
+    "uuid": "4c4f5b1e-2d0d-4b3e-9b5e-8e0d3d8f4f11",
+    "version": [1, 0, 0],
+    "min_engine_version": [1, 26, 10]
+  },
+  "modules": [
+    {
+      "type": "script",
+      "language": "javascript",
+      "uuid": "b7b0c6d9-8c4f-4d77-a7a2-0c2a9b6d2f31",
+      "version": [1, 0, 0],
+      "entry": "scripts/main.js"
+    }
+  ],
+  "dependencies": [
+    {
+      "module_name": "@minecraft/server",
+      "version": "2.6.0"
+    }
+  ]
+}
