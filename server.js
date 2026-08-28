@@ -57,7 +57,7 @@ wss.on('connection', socket => {
   clients.add(socket);
   console.log(`Minecraft conectado (${clients.size}).`);
 
-  sendScriptEventTo(socket, 'tntcoin:connected', {
+  sendScriptEventTo(socket, 'b2:connected', {
     tiktokUsername: TIKTOK_USERNAME
   });
 
@@ -135,8 +135,7 @@ tiktok.on(WebcastEvent.GIFT, data => {
 
   if (!ROSE_NAMES.has(normalizedName)) return;
 
-  // TNTCoin espera exactamente estas propiedades para tntcoin:gift.
-  sendScriptEvent('tntcoin:gift', {
+  sendScriptEvent('b2:gift', {
     username: data.user?.uniqueId || data.uniqueId || 'unknown',
     nickname: data.user?.nickname || data.nickname || 'TikTok',
     giftName: giftName || 'Rose',
@@ -152,7 +151,7 @@ tiktok.on(WebcastEvent.GIFT, data => {
     repeatEnd: data.repeatEnd ? 1 : 0
   });
 
-  console.log('🌹 Rosa enviada a Minecraft → tntcoin:gift');
+  console.log('🌹 Rosa enviada a B2 Add-On → b2:gift');
 });
 
 wss.on('listening', () => {
