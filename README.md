@@ -18,7 +18,7 @@ TNTCoin
 🧟 Zombie
 ```
 
-B2 usa `tiktok-live-connector` para recibir eventos de TikTok LIVE y el protocolo WebSocket de Minecraft Bedrock para enviar `/scriptevent` al mundo. La librería de TikTok es no oficial y no requiere iniciar sesión para leer un LIVE público. citeturn3search0
+B2 usa `tiktok-live-connector` para recibir eventos de TikTok LIVE y el protocolo WebSocket de Minecraft Bedrock para enviar `/scriptevent` al mundo. La librería de TikTok es no oficial y puede leer un LIVE público sin iniciar sesión.
 
 ## Instalación en Android / Termux
 
@@ -42,6 +42,8 @@ También puedes cambiar el usuario:
 TIKTOK_USERNAME=tu_usuario npm start
 ```
 
+Si la cuenta todavía no está LIVE, B2 reintentará la conexión automáticamente.
+
 ## Conectar Minecraft
 
 Con B2 ejecutándose, abre el mundo de Minecraft con TNTCoin y ejecuta:
@@ -50,7 +52,7 @@ Con B2 ejecutándose, abre el mundo de Minecraft con TNTCoin y ejecuta:
 /connect localhost:3000
 ```
 
-El protocolo WebSocket de Bedrock permite enviar comandos mediante paquetes `commandRequest`; `/scriptevent` permite entregar un ID y un payload al sistema de scripts. citeturn2search0turn1search1
+El protocolo WebSocket de Bedrock permite enviar comandos mediante paquetes `commandRequest`; `/scriptevent` permite entregar un ID y un payload al sistema de scripts.
 
 ## Rosa → Zombie
 
@@ -60,9 +62,9 @@ B2 detecta los regalos cuyo nombre sea `Rose` o `Rosa` y envía:
 /scriptevent tntcoin:gift { ... }
 ```
 
-TNTCoin ya escucha `tntcoin:gift` y espera `username`, `nickname`, `giftName`, `giftId`, `repeatCount`, `giftType`, `diamondCount` y `repeatEnd`. citeturn7file0turn10file0
+TNTCoin ya escucha `tntcoin:gift` y espera `username`, `nickname`, `giftName`, `giftId`, `repeatCount`, `giftType`, `diamondCount` y `repeatEnd`.
 
-Después, la acción **Gift** configurada en TNTCoin puede ser **Summon → minecraft:zombie**. TNTCoin documenta soporte para eventos de Gift y acciones Summon. citeturn1search4
+Después, la acción **Gift** configurada en TNTCoin puede ser **Summon → minecraft:zombie**.
 
 ## Estado
 
@@ -70,7 +72,8 @@ Después, la acción **Gift** configurada en TNTCoin puede ser **Summon → mine
 - [x] Conexión con TikTok LIVE
 - [x] Detección de Rose/Rosa
 - [x] Conversión a `tntcoin:gift`
+- [x] Reintento si TikTok está offline
 - [ ] Prueba real con un LIVE
 - [ ] Configuración final de Gift → Summon Zombie
 
-> Nota: TikTokLiveConnector no es una API oficial de TikTok; funciona leyendo el servicio Webcast interno de TikTok. citeturn3search0
+> Nota: TikTokLiveConnector no es una API oficial de TikTok; funciona leyendo el servicio Webcast interno de TikTok.
