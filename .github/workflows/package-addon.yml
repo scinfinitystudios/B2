@@ -12,10 +12,32 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Create mcaddon
+      - name: Validate Bedrock files
+        shell: bash
         run: |
-          cd B2Addon
-          zip -r ../B2Addon.mcaddon .
+          test -f B2Addon/manifest.json
+          test -f B2Addon/scripts/main.js
+          python3 - <<'PY'
+          import json
+          with open('B2Addon/manifest.json', encoding='utf-8') as f:
+              json.load(f)
+          print('manifest.json OK')
+          PY
+      - name: Build mcaddon
+        shell: bash
+        run: |
+          rm -rf build
+          mkdir -p build/B2Addon
+          cp -R B2Addon/. build/B2Addon/
+          cd build/B2Addon
+          zip -r ../B2Addon.mcpack .
+          cd ../..
+          zip -r B2Addon.mcaddon build/B2Addon.mcpack
+      - name: Validate archive
+        shell: bash
+        run: |
+          unzip -t B2Addon.mcaddon
+          unzip -p B2Addon.mcaddon build/B2Addon.mcpack > /dev/null
       - name: Upload mcaddon
         uses: actions/upload-artifact@v4
         with:
