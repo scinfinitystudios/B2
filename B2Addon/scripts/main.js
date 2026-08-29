@@ -14,7 +14,7 @@ let triggered50 = 0;
 let triggered100 = 0;
 
 function getTarget(event) {
-  if (event?.source?.typeId === 'minecraft:player') return event.source;
+  if (event?.sourceEntity?.typeId === 'minecraft:player') return event.sourceEntity;
   return world.getAllPlayers()[0];
 }
 
@@ -39,15 +39,17 @@ function showEvent(target, title, subtitle = '') {
 
 world.afterEvents.itemUse.subscribe((event) => {
   const target = event.source;
-  if (target?.typeId !== 'minecraft:player' || target?.typeId !== 'minecraft:player') return;
+  if (target?.typeId !== 'minecraft:player') return;
   if (event.itemStack?.typeId === 'minecraft:compass') showB2Menu(target);
 });
 
-world.afterEvents.scriptEventReceive.subscribe((event) => {
+// Script events are exposed by system.afterEvents in the Bedrock Script API.
+system.afterEvents.scriptEventReceive.subscribe((event) => {
   const target = getTarget(event);
   let data = {};
-  try { data = JSON.parse(event.message || '{}'); }
-  catch { data = { action: String(event.message || '').trim().toLowerCase() }; }
+  const message = String(event.message || '').trim();
+  try { data = JSON.parse(message); }
+  catch { data = { action: message.toLowerCase() }; }
 
   if (event.id === GIFT_EVENT) {
     const name = String(data.giftName || '').trim().toLowerCase();
@@ -85,11 +87,12 @@ world.afterEvents.scriptEventReceive.subscribe((event) => {
   }
 
   if (event.id === ACTION_EVENT) {
-    if (String(data.action || '').toLowerCase() === 'follow') {
+    const action = String(data.action || '').trim().toLowerCase();
+    if (action === 'follow') {
       summon(target, 'minecraft:tnt', 5);
       showEvent(target, '➕ SEGUIR', '+5 TNT donde estás');
     }
-    if (String(data.action || '').toLowerCase() === 'share') {
+    if (action === 'share') {
       giveEnchantedApple(target);
       showEvent(target, '↗️ COMPARTIR', '+1 Manzana encantada');
     }
