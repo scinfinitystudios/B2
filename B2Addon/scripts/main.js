@@ -18,9 +18,10 @@ const BATCH_SIZE = 10;
 
 function player() { return world.getAllPlayers()[0]; }
 function queueSpawn(entityId, count) { const amount = Math.max(0, Math.floor(Number(count) || 0)); if (amount) spawnQueue.set(entityId, (spawnQueue.get(entityId) || 0) + amount); }
-function randomAround(target, minRadius = 3, maxRadius = 8) { const angle = Math.random() * Math.PI * 2; const radius = minRadius + Math.random() * (maxRadius - minRadius); return { x: target.location.x + Math.cos(angle) * radius, y: target.location.y, z: target.location.z + Math.sin(angle) * radius }; }
+function randomAround(target, minRadius = 3, maxRadius = 8) { const angle = Math.random() * Math.PI * 2; const radius = minRadius + Math.random() * (maxRadius - minRadius); return { x: target.location.x + Math.cos(angle) * radius, y: target.location.y + 1, z: target.location.z + Math.sin(angle) * radius }; }
 function processQueue() { const target = player(); if (!target) return; for (const [entityId, pending] of spawnQueue) { const amount = Math.min(pending, BATCH_SIZE); for (let i = 0; i < amount; i++) { try { target.dimension.spawnEntity(entityId, randomAround(target)); } catch (error) { console.warn(`[B2] Error generando ${entityId}: ${error}`); } } if (pending > amount) spawnQueue.set(entityId, pending - amount); else spawnQueue.delete(entityId); } }
-function processTntQueue() { const target = player(); if (!target || tntQueue <= 0) return; const amount = Math.min(tntQueue, BATCH_SIZE); for (let i = 0; i < amount; i++) { const pos = randomAround(target, 3, 6); try { target.dimension.runCommand(`summon tnt ${Math.floor(pos.x)} ${Math.floor(pos.y)} ${Math.floor(pos.z)}`); } catch (error) { try { target.dimension.runCommand(`summon minecraft:tnt ${Math.floor(pos.x)} ${Math.floor(pos.y)} ${Math.floor(pos.z)}`); } catch (fallbackError) { console.warn(`[B2] Error generando TNT: ${fallbackError}`); } } } tntQueue -= amount; }
+function processTntQueue() { const target = player(); if (!target || tntQueue <= 0) return; const amount = Math.min(tntQueue, BATCH_SIZE); for (let i = 0; i < amount; i++) { try { const tnt = target.dimension.spawnEntity('minecraft:tnt', randomAround(target, 4, 7)); try { tnt.setProperty('minecraft:fuse_length', 2); } catch {} } catch (error) { console.warn(`[B2] Error generando TNT: ${error}`); } } tntQueue -= amount; }
+
 system.runInterval(processQueue, 2);
 system.runInterval(processTntQueue, 2);
 const chargedQueue = { count: 0 };
