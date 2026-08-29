@@ -12,6 +12,7 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Validate Bedrock files
         shell: bash
         run: |
@@ -23,21 +24,31 @@ jobs:
               json.load(f)
           print('manifest.json OK')
           PY
-      - name: Build mcaddon
+
+      - name: Build mcpack and mcaddon
         shell: bash
         run: |
-          rm -rf build
+          rm -rf build B2Addon.mcpack B2Addon.mcaddon
           mkdir -p build/B2Addon
           cp -R B2Addon/. build/B2Addon/
+
+          # The .mcpack must contain manifest.json at its root.
           cd build/B2Addon
-          zip -r ../B2Addon.mcpack .
+          zip -r ../../B2Addon.mcpack .
           cd ../..
-          zip -r B2Addon.mcaddon build/B2Addon.mcpack
-      - name: Validate archive
+
+          # The .mcaddon is a ZIP whose package files are at the archive root.
+          zip -j B2Addon.mcaddon B2Addon.mcpack
+
+      - name: Validate mcaddon structure
         shell: bash
         run: |
           unzip -t B2Addon.mcaddon
-          unzip -p B2Addon.mcaddon build/B2Addon.mcpack > /dev/null
+          test "$(unzip -Z1 B2Addon.mcaddon | grep -c '^B2Addon\.mcpack$')" -eq 1
+          unzip -p B2Addon.mcaddon B2Addon.mcpack > build/test.mcpack
+          unzip -t build/test.mcpack
+          unzip -l build/test.mcpack | grep -q 'manifest.json'
+
       - name: Upload mcaddon
         uses: actions/upload-artifact@v4
         with:
