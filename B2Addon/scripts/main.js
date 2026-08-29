@@ -16,29 +16,40 @@ let triggered100 = 0;
 function getTarget(event) {
   if (event?.sourceEntity?.typeId === 'minecraft:player') return event.sourceEntity;
   if (event?.initiator?.typeId === 'minecraft:player') return event.initiator;
-  return world.getAllPlayers()[0];
-}
-
-function runAtPlayer(target, command) {
-  if (!target) return false;
-  try {
-    target.runCommand(command);
-    return true;
-  } catch (error) {
-    console.warn(`[B2] ${command} -> ${error}`);
-    return false;
-  }
+  const players = world.getAllPlayers();
+  return players.length ? players[0] : undefined;
 }
 
 function summon(target, entityId, count) {
   if (!target) return;
   for (let i = 0; i < count; i++) {
-    runAtPlayer(target, `summon ${entityId} ~ ~ ~`);
+    try {
+      target.dimension.spawnEntity(entityId, {
+        x: target.location.x,
+        y: target.location.y,
+        z: target.location.z
+      });
+    } catch (error) {
+      console.warn(`[B2] Error generando ${entityId}: ${error}`);
+    }
+  }
+}
+
+function summonTnt(target, count) {
+  if (!target) return;
+  for (let i = 0; i < count; i++) {
+    try {
+      target.runCommand('summon tnt ~ ~ ~');
+    } catch (error) {
+      console.warn(`[B2] Error generando TNT: ${error}`);
+    }
   }
 }
 
 function giveEnchantedApple(target) {
-  runAtPlayer(target, 'give @s minecraft:enchanted_golden_apple 1');
+  if (!target) return;
+  try { target.runCommand('give @s minecraft:enchanted_golden_apple 1'); }
+  catch (error) { console.warn(`[B2] Error dando manzana: ${error}`); }
 }
 
 function showEvent(target, title, subtitle = '') {
@@ -59,7 +70,6 @@ world.afterEvents.itemUse.subscribe((event) => {
   if (event.itemStack?.typeId === 'minecraft:compass') showB2Menu(target);
 });
 
-// /scriptevent belongs to the SystemAfterEvents API, not WorldAfterEvents.
 system.afterEvents.scriptEventReceive.subscribe((event) => {
   const target = getTarget(event);
   if (!target) return;
@@ -69,38 +79,41 @@ system.afterEvents.scriptEventReceive.subscribe((event) => {
   try {
     data = message ? JSON.parse(message) : {};
   } catch {
-    // Allows: /scriptevent b2:action follow
-    // and similar simple test commands.
-    data = { action: message.toLowerCase() };
+    data = { action: message.toLowerCase(), giftName: message.toLowerCase() };
   }
 
   if (event.id === GIFT_EVENT) {
-    const name = String(data.giftName || '').trim().toLowerCase();
+    const name = String(data.giftName || data.gift || '').trim().toLowerCase();
     const repeat = Math.max(1, Math.floor(Number(data.repeatCount) || 1));
 
     if (ROSE_NAMES.has(name)) {
       summon(target, 'minecraft:zombie', 2 * repeat);
-      showEvent(target, '🌹 ROSA', `+${2 * repeat} Zombies`);
+      showEvent(target, '🌹 ROSA', `+${2 * repeat} Zombies cerca de ti`);
     } else if (POPULAR_NAMES.has(name)) {
       summon(target, 'minecraft:spider', 5 * repeat);
-      showEvent(target, '🎁 POPULAR', `+${5 * repeat} Arañas`);
+      showEvent(target, '🎁 POPULAR', `+${5 * repeat} Arañas cerca de ti`);
     } else if (LOVE_NAMES.has(name)) {
       summon(target, 'minecraft:witch', 5 * repeat);
-      showEvent(target, '🎁 QUIÉREME', `+${5 * repeat} Brujas`);
+      showEvent(target, '🎁 QUIÉREME', `+${5 * repeat} Brujas cerca de ti`);
     } else if (HEART_NAMES.has(name)) {
       summon(target, 'minecraft:skeleton', 10 * repeat);
-      showEvent(target, '❣️ CORAZÓN', `+${10 * repeat} Esqueletos`);
+      showEvent(target, '❣️ CORAZÓN', `+${10 * repeat} Esqueletos cerca de ti`);
     } else if (CAPYBARA_NAMES.has(name)) {
       for (let i = 0; i < 10 * repeat; i++) {
         try {
-          const creeper = target.dimension.spawnEntity('minecraft:creeper', target.location);
+          const creeper = target.dimension.spawnEntity('minecraft:creeper', {
+            x: target.location.x,
+            y: target.location.y,
+            z: target.location.z
+          });
           try { creeper.triggerEvent('minecraft:become_charged'); } catch {}
         } catch (error) {
-          console.warn(`[B2] Error creeper cargado: ${error}`);
+          console.warn(`[B2] Error generando creeper cargado: ${error}`);
         }
       }
-      showEvent(target, '🦫 CAPIBARA', `+${10 * repeat} Creepers cargados`);
+      showEvent(target, '🦫 CAPIBARA', `+${10 * repeat} Creepers cargados cerca de ti`);
     }
+    return;
   }
 
   if (event.id === LIKES_EVENT) {
@@ -111,23 +124,24 @@ system.afterEvents.scriptEventReceive.subscribe((event) => {
     while (triggered50 < new50) {
       triggered50++;
       summon(target, 'minecraft:creeper', 1);
-      showEvent(target, '👍 50 LIKES', '+1 Creeper');
+      showEvent(target, '👍 50 LIKES', '+1 Creeper cerca de ti');
     }
 
     while (triggered100 < new100) {
       triggered100++;
       summon(target, 'minecraft:creeper', 3);
-      showEvent(target, '👍 100 LIKES', '+3 Creepers');
+      showEvent(target, '👍 100 LIKES', '+3 Creepers cerca de ti');
     }
 
     totalLikes = nextLikes;
+    return;
   }
 
   if (event.id === ACTION_EVENT) {
-    const action = String(data.action || '').trim().toLowerCase();
+    const action = String(data.action || message).trim().toLowerCase();
 
     if (action === 'follow') {
-      summon(target, 'minecraft:tnt', 5);
+      summonTnt(target, 5);
       showEvent(target, '➕ SEGUIR', '+5 TNT donde estás');
     } else if (action === 'share') {
       giveEnchantedApple(target);
