@@ -1,16 +1,16 @@
 import { randomUUID } from 'node:crypto';
-import { WebSocketServer } from 'ws';
-import { TikTokLive } from '@tiktool/live';
+import WebSocket, { WebSocketServer } from 'ws';
 
 const TIKTOK_USERNAME = (process.env.TIKTOK_USERNAME || 'toshi.bs3').replace(/^@/, '');
 const TIKTOOL_API_KEY = process.env.TIKTOOL_API_KEY || '';
 const MC_PORT = Number(process.env.MC_PORT || 3000);
 const RETRY_MS = 10_000;
+
 const clients = new Set();
 const wss = new WebSocketServer({ port: MC_PORT });
 
 function sendCommand(socket, commandLine) {
-  if (socket.readyState !== 1) return;
+  if (socket.readyState !== WebSocket.OPEN) return;
   socket.send(JSON.stringify({
     header: {
       version: 1,
@@ -72,155 +72,116 @@ wss.on('connection', socket => {
   socket.on('error', error => console.error('WebSocket Minecraft:', error.message));
 });
 
-let live = null;
-let connected = false;
-let connecting = false;
+let tikTokSocket = null;
 let retryTimer = null;
 
-function retry() {
-  if (retryTimer || connected || connecting) return;
+function scheduleTikTokReconnect() {
+  if (retryTimer) return;
   retryTimer = setTimeout(() => {
     retryTimer = null;
     connectTikTok();
   }, RETRY_MS);
-  console.log('TikTok offline/no disponible. Reintentando en 10s...');
+  console.log('TikTok offline. Reintentando en 10s...');
+}
+
+function handleTikTokEvent(type, data) {
+  if (!type) return;
+
+  // The direct TikTool WebSocket sends { event, data }.
+  // Keep the payload shape intact so likes/gifts/social actions are reliable.
+  if (type === 'like') {
+    const likeCount = Number(data?.likeCount ?? 0);
+    const totalLikes = Number(data?.totalLikes ?? likeCount);
+    console.log(`❤️ Like: ${userId(data)} +${likeCount} (total: ${totalLikes})`);
+    if (likeCount > 0 || totalLikes > 0) {
+      sendEvent('b2:likes', {
+        totalLikes,
+        likeCount,
+        username: userId(data)
+      });
+    }
+    return;
+  }
+
+  if (type === 'social') {
+    const action = String(data?.action || '').toLowerCase();
+    const username = userId(data);
+    console.log(`📣 Social: ${action || 'unknown'} → ${username}`);
+    if (action === 'follow' || action === 'share') {
+      sendEvent('b2:action', { action, username });
+    }
+    return;
+  }
+
+  // Some TikTool clients expose follow/share as separate event names.
+  if (type === 'follow' || type === 'share') {
+    const username = userId(data);
+    console.log(`${type === 'follow' ? '➕ Follow' : '↗️ Share'}: ${username}`);
+    sendEvent('b2:action', { action: type, username });
+    return;
+  }
+
+  if (type === 'gift') {
+    const giftName = String(data?.giftName || '').trim();
+    const giftId = Number(data?.giftId ?? 0);
+    const repeatCount = Math.max(1, Number(data?.repeatCount || 1));
+    console.log(`🎁 Regalo: ${giftName || 'desconocido'} (${giftId}) x${repeatCount}`);
+    sendEvent('b2:gift', {
+      username: userId(data),
+      nickname: data?.user?.nickname || data?.nickname || 'TikTok',
+      giftName,
+      giftId,
+      repeatCount,
+      giftType: Number(data?.giftType ?? 1),
+      diamondCount: Number(data?.diamondCount ?? 1),
+      repeatEnd: data?.repeatEnd ? 1 : 0
+    });
+    return;
+  }
+
+  // Useful diagnostics without flooding Termux with every unrelated event.
+  if (type !== 'connected' && type !== 'roomInfo') {
+    console.log(`📦 TikTok evento: ${type}`);
+  }
 }
 
 function connectTikTok() {
-  if (connected || connecting) return;
   if (!TIKTOOL_API_KEY) {
     console.error('Falta TIKTOOL_API_KEY. Configúrala en Termux antes de ejecutar npm start.');
     return;
   }
 
-  connecting = true;
-  live = new TikTokLive({
-    uniqueId: TIKTOK_USERNAME,
-    apiKey: TIKTOOL_API_KEY
+  if (tikTokSocket && [WebSocket.OPEN, WebSocket.CONNECTING].includes(tikTokSocket.readyState)) return;
+
+  const url = `wss://api.tik.tools?uniqueId=${encodeURIComponent(TIKTOK_USERNAME)}&apiKey=${encodeURIComponent(TIKTOOL_API_KEY)}`;
+  console.log(`Conectando TikTok: @${TIKTOK_USERNAME}...`);
+
+  tikTokSocket = new WebSocket(url);
+
+  tikTokSocket.on('open', () => {
+    console.log(`TikTok conectado: @${TIKTOK_USERNAME}`);
   });
 
-  live.on('connected', data => {
-    connected = true;
-    connecting = false;
-    console.log(`TikTok conectado: @${TIKTOK_USERNAME}${data?.roomId ? ` | roomId: ${data.roomId}` : ''}`);
+  tikTokSocket.on('message', raw => {
+    try {
+      const message = JSON.parse(raw.toString());
+      const type = message?.event || message?.type;
+      const data = message?.data || {};
+      handleTikTokEvent(type, data);
+    } catch (error) {
+      console.warn('[B2] Evento TikTok no válido:', error?.message || error);
+    }
   });
 
-  live.on('error', error => {
+  tikTokSocket.on('error', error => {
     console.error('Error TikTok:', error?.message || error);
-    connected = false;
-    connecting = false;
-    retry();
   });
 
-  live.on('disconnected', () => {
-    connected = false;
-    connecting = false;
-    console.log('TikTok desconectado.');
-    retry();
-  });
-
-  live.on('streamEnd', () => {
-    connected = false;
-    connecting = false;
-    console.log('LIVE terminado. Esperando el próximo...');
-    retry();
-  });
-
-  // TikTool v2 exposes the complete event stream through the generic `event` event.
-  // Keep dedicated listeners where available, but route social events through `social`.
-  live.on('event', event => {
-    const type = event?.type || event?.event;
-    const data = event?.data || event;
-    if (!type) return;
-    if (!['like', 'gift', 'follow', 'share', 'social'].includes(type)) return;
-
-    if (type === 'like') {
-      const totalLikes = Number(data.totalLikes ?? data.likeCount ?? 0);
-      const likeCount = Number(data.likeCount ?? 0);
-      console.log(`❤️ Like: ${userId(data)} +${likeCount} (total: ${totalLikes})`);
-      if (totalLikes > 0) sendEvent('b2:likes', { totalLikes, likeCount, username: userId(data) });
-      return;
-    }
-
-    if (type === 'social') {
-      const action = String(data.action || '').toLowerCase();
-      const username = userId(data);
-      console.log(`📣 Social: ${action || 'unknown'} → ${username}`);
-      if (action === 'follow' || action === 'share') {
-        sendEvent('b2:action', { action, username });
-      }
-      return;
-    }
-
-    if (type === 'follow' || type === 'share') {
-      const username = userId(data);
-      console.log(`${type === 'follow' ? '➕ Follow' : '↗️ Share'}: ${username}`);
-      sendEvent('b2:action', { action: type, username });
-      return;
-    }
-
-    if (type === 'gift') {
-      const name = String(data.giftName || '').trim();
-      const id = Number(data.giftId ?? 0);
-      const repeatCount = Math.max(1, Number(data.repeatCount || 1));
-      console.log(`🎁 Regalo: ${name || 'desconocido'} (${id}) x${repeatCount}`);
-      sendEvent('b2:gift', {
-        username: userId(data),
-        nickname: data.user?.nickname || data.nickname || 'TikTok',
-        giftName: name,
-        giftId: id,
-        repeatCount,
-        giftType: Number(data.giftType ?? 1),
-        diamondCount: Number(data.diamondCount ?? 1),
-        repeatEnd: data.repeatEnd ? 1 : 0
-      });
-    }
-  });
-
-  // Direct listeners retained as a fallback for SDK versions that emit typed events.
-  live.on('like', data => {
-    const totalLikes = Number(data.totalLikes ?? data.likeCount ?? 0);
-    const likeCount = Number(data.likeCount ?? 0);
-    console.log(`❤️ Like: ${userId(data)} +${likeCount} (total: ${totalLikes})`);
-    if (totalLikes > 0) sendEvent('b2:likes', { totalLikes, likeCount, username: userId(data) });
-  });
-
-  live.on('gift', data => {
-    const name = String(data.giftName || '').trim();
-    const id = Number(data.giftId ?? 0);
-    const repeatCount = Math.max(1, Number(data.repeatCount || 1));
-    console.log(`🎁 Regalo: ${name || 'desconocido'} (${id}) x${repeatCount}`);
-    sendEvent('b2:gift', {
-      username: userId(data), nickname: data.user?.nickname || data.nickname || 'TikTok',
-      giftName: name, giftId: id, repeatCount,
-      giftType: Number(data.giftType ?? 1), diamondCount: Number(data.diamondCount ?? 1),
-      repeatEnd: data.repeatEnd ? 1 : 0
-    });
-  });
-
-  live.on('social', data => {
-    const action = String(data.action || '').toLowerCase();
-    if (action === 'follow' || action === 'share') {
-      console.log(`📣 Social: ${action} → ${userId(data)}`);
-      sendEvent('b2:action', { action, username: userId(data) });
-    }
-  });
-
-  live.on('follow', data => {
-    console.log(`➕ Follow: ${userId(data)}`);
-    sendEvent('b2:action', { action: 'follow', username: userId(data) });
-  });
-
-  live.on('share', data => {
-    console.log(`↗️ Share: ${userId(data)}`);
-    sendEvent('b2:action', { action: 'share', username: userId(data) });
-  });
-
-  Promise.resolve(live.connect()).catch(error => {
-    console.error('Error conectando TikTok:', error?.message || error);
-    connected = false;
-    connecting = false;
-    retry();
+  tikTokSocket.on('close', (code, reason) => {
+    const text = reason?.toString?.() || '';
+    tikTokSocket = null;
+    console.log(`TikTok desconectado (${code}${text ? `: ${text}` : ''}).`);
+    scheduleTikTokReconnect();
   });
 }
 
