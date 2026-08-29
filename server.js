@@ -29,16 +29,17 @@ function sendCommand(socket, commandLine) {
 
 function sendEvent(id, payload) {
   const message = JSON.stringify(payload);
-  for (const socket of clients) {
-    sendCommand(socket, `scriptevent ${id} ${message}`);
-  }
+  for (const socket of clients) sendCommand(socket, `scriptevent ${id} ${message}`);
+}
+
+function userId(data) {
+  return data?.user?.uniqueId || data?.uniqueId || 'unknown';
 }
 
 wss.on('connection', socket => {
   clients.add(socket);
   console.log(`Minecraft conectado (${clients.size}).`);
 
-  // Subscribe first; this is the normal Bedrock WebSocket handshake.
   socket.send(JSON.stringify({
     header: {
       version: 1,
@@ -68,9 +69,7 @@ wss.on('connection', socket => {
     console.log(`Minecraft desconectado (${clients.size}).`);
   });
 
-  socket.on('error', error => {
-    console.error('WebSocket Minecraft:', error.message);
-  });
+  socket.on('error', error => console.error('WebSocket Minecraft:', error.message));
 });
 
 let live = null;
@@ -85,10 +84,6 @@ function retry() {
     connectTikTok();
   }, RETRY_MS);
   console.log('TikTok offline/no disponible. Reintentando en 10s...');
-}
-
-function userId(data) {
-  return data?.user?.uniqueId || data?.uniqueId || 'unknown';
 }
 
 function connectTikTok() {
@@ -131,36 +126,94 @@ function connectTikTok() {
     retry();
   });
 
+  // TikTool v2 exposes the complete event stream through the generic `event` event.
+  // Keep dedicated listeners where available, but route social events through `social`.
+  live.on('event', event => {
+    const type = event?.type || event?.event;
+    const data = event?.data || event;
+    if (!type) return;
+    if (!['like', 'gift', 'follow', 'share', 'social'].includes(type)) return;
+
+    if (type === 'like') {
+      const totalLikes = Number(data.totalLikes ?? data.likeCount ?? 0);
+      const likeCount = Number(data.likeCount ?? 0);
+      console.log(`❤️ Like: ${userId(data)} +${likeCount} (total: ${totalLikes})`);
+      if (totalLikes > 0) sendEvent('b2:likes', { totalLikes, likeCount, username: userId(data) });
+      return;
+    }
+
+    if (type === 'social') {
+      const action = String(data.action || '').toLowerCase();
+      const username = userId(data);
+      console.log(`📣 Social: ${action || 'unknown'} → ${username}`);
+      if (action === 'follow' || action === 'share') {
+        sendEvent('b2:action', { action, username });
+      }
+      return;
+    }
+
+    if (type === 'follow' || type === 'share') {
+      const username = userId(data);
+      console.log(`${type === 'follow' ? '➕ Follow' : '↗️ Share'}: ${username}`);
+      sendEvent('b2:action', { action: type, username });
+      return;
+    }
+
+    if (type === 'gift') {
+      const name = String(data.giftName || '').trim();
+      const id = Number(data.giftId ?? 0);
+      const repeatCount = Math.max(1, Number(data.repeatCount || 1));
+      console.log(`🎁 Regalo: ${name || 'desconocido'} (${id}) x${repeatCount}`);
+      sendEvent('b2:gift', {
+        username: userId(data),
+        nickname: data.user?.nickname || data.nickname || 'TikTok',
+        giftName: name,
+        giftId: id,
+        repeatCount,
+        giftType: Number(data.giftType ?? 1),
+        diamondCount: Number(data.diamondCount ?? 1),
+        repeatEnd: data.repeatEnd ? 1 : 0
+      });
+    }
+  });
+
+  // Direct listeners retained as a fallback for SDK versions that emit typed events.
   live.on('like', data => {
-    const totalLikes = Number(data.totalLikes ?? data.totalLikeCount ?? data.likeCount ?? 0);
-    if (totalLikes > 0) sendEvent('b2:likes', { totalLikes });
-  });
-
-  live.on('follow', data => {
-    sendEvent('b2:action', { action: 'follow', username: userId(data) });
-    console.log('➕ Follow → 5 TNT');
-  });
-
-  live.on('share', data => {
-    sendEvent('b2:action', { action: 'share', username: userId(data) });
-    console.log('↗️ Share → manzana encantada');
+    const totalLikes = Number(data.totalLikes ?? data.likeCount ?? 0);
+    const likeCount = Number(data.likeCount ?? 0);
+    console.log(`❤️ Like: ${userId(data)} +${likeCount} (total: ${totalLikes})`);
+    if (totalLikes > 0) sendEvent('b2:likes', { totalLikes, likeCount, username: userId(data) });
   });
 
   live.on('gift', data => {
-    const name = String(data.giftName || data.giftDetails?.giftName || '').trim();
-    const id = Number(data.giftId ?? data.giftDetails?.giftId ?? 0);
+    const name = String(data.giftName || '').trim();
+    const id = Number(data.giftId ?? 0);
     const repeatCount = Math.max(1, Number(data.repeatCount || 1));
     console.log(`🎁 Regalo: ${name || 'desconocido'} (${id}) x${repeatCount}`);
     sendEvent('b2:gift', {
-      username: userId(data),
-      nickname: data.user?.nickname || data.nickname || 'TikTok',
-      giftName: name,
-      giftId: id,
-      repeatCount,
-      giftType: Number(data.giftType ?? data.giftDetails?.giftType ?? 1),
-      diamondCount: Number(data.diamondCount ?? data.giftDetails?.diamondCount ?? 1),
+      username: userId(data), nickname: data.user?.nickname || data.nickname || 'TikTok',
+      giftName: name, giftId: id, repeatCount,
+      giftType: Number(data.giftType ?? 1), diamondCount: Number(data.diamondCount ?? 1),
       repeatEnd: data.repeatEnd ? 1 : 0
     });
+  });
+
+  live.on('social', data => {
+    const action = String(data.action || '').toLowerCase();
+    if (action === 'follow' || action === 'share') {
+      console.log(`📣 Social: ${action} → ${userId(data)}`);
+      sendEvent('b2:action', { action, username: userId(data) });
+    }
+  });
+
+  live.on('follow', data => {
+    console.log(`➕ Follow: ${userId(data)}`);
+    sendEvent('b2:action', { action: 'follow', username: userId(data) });
+  });
+
+  live.on('share', data => {
+    console.log(`↗️ Share: ${userId(data)}`);
+    sendEvent('b2:action', { action: 'share', username: userId(data) });
   });
 
   Promise.resolve(live.connect()).catch(error => {
