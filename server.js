@@ -12,22 +12,65 @@ const wss = new WebSocketServer({ port: MC_PORT });
 function sendCommand(socket, commandLine) {
   if (socket.readyState !== 1) return;
   socket.send(JSON.stringify({
-    header: { version: 1, requestId: randomUUID(), messageType: 'commandRequest', messagePurpose: 'commandRequest' },
-    body: { version: 1, origin: { type: 'player' }, commandLine }
+    header: {
+      version: 1,
+      requestId: randomUUID(),
+      messageType: 'commandRequest',
+      messagePurpose: 'commandRequest'
+    },
+    body: {
+      version: 1,
+      origin: { type: 'player' },
+      overworld: 'default',
+      commandLine: commandLine.startsWith('/') ? commandLine : `/${commandLine}`
+    }
   }));
 }
 
 function sendEvent(id, payload) {
   const message = JSON.stringify(payload);
-  for (const socket of clients) sendCommand(socket, `scriptevent ${id} ${message}`);
+  for (const socket of clients) {
+    sendCommand(socket, `scriptevent ${id} ${message}`);
+  }
 }
 
 wss.on('connection', socket => {
   clients.add(socket);
   console.log(`Minecraft conectado (${clients.size}).`);
-  sendCommand(socket, `scriptevent b2:connected ${JSON.stringify({ tiktokUsername: TIKTOK_USERNAME })}`);
-  socket.on('close', () => clients.delete(socket));
-  socket.on('error', error => console.error('WebSocket Minecraft:', error.message));
+
+  // Subscribe first; this is the normal Bedrock WebSocket handshake.
+  socket.send(JSON.stringify({
+    header: {
+      version: 1,
+      requestId: randomUUID(),
+      messageType: 'commandRequest',
+      messagePurpose: 'subscribe'
+    },
+    body: { eventName: 'PlayerMessage' }
+  }));
+
+  socket.on('message', raw => {
+    try {
+      const packet = JSON.parse(raw.toString());
+      if (packet?.header?.messagePurpose === 'commandResponse') {
+        const status = packet.body?.statusCode;
+        if (typeof status === 'number' && status < 0) {
+          console.warn(`[B2] Minecraft command error ${status}: ${packet.body?.statusMessage || ''}`);
+        }
+      }
+    } catch {
+      console.warn('[B2] Mensaje WebSocket de Minecraft no válido.');
+    }
+  });
+
+  socket.on('close', () => {
+    clients.delete(socket);
+    console.log(`Minecraft desconectado (${clients.size}).`);
+  });
+
+  socket.on('error', error => {
+    console.error('WebSocket Minecraft:', error.message);
+  });
 });
 
 let live = null;
@@ -37,7 +80,10 @@ let retryTimer = null;
 
 function retry() {
   if (retryTimer || connected || connecting) return;
-  retryTimer = setTimeout(() => { retryTimer = null; connectTikTok(); }, RETRY_MS);
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    connectTikTok();
+  }, RETRY_MS);
   console.log('TikTok offline/no disponible. Reintentando en 10s...');
 }
 
@@ -85,7 +131,6 @@ function connectTikTok() {
     retry();
   });
 
-  // Likes: enviamos el total al add-on; main.js controla los múltiplos de 50/100.
   live.on('like', data => {
     const totalLikes = Number(data.totalLikes ?? data.totalLikeCount ?? data.likeCount ?? 0);
     if (totalLikes > 0) sendEvent('b2:likes', { totalLikes });
