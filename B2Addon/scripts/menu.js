@@ -13,5 +13,11 @@ export async function showB2Menu(player) {
     .button('🦫 Capibara\n10 Creepers cargados')
     .button('↗️ Compartir\n1 Manzana encantada');
 
-  try { await form.show(player); } catch (error) { console.warn(`[B2] Error mostrando menú: ${error}`); }
+  try {
+    const result = await form.show(player);
+    if (result.canceled) return;
+    player.sendMessage('§6[B2] §fEste menú es informativo: los eventos se activan mediante los eventos TikTok.');
+  } catch (error) {
+    console.warn(`[B2] Error mostrando menú: ${error}`);
+  }
 }
