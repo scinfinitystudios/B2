@@ -7,15 +7,13 @@ Puente ligero para conectar **TikTok LIVE con Minecraft Bedrock** desde Node.js/
 ```text
 TikTok LIVE
    ↓
-🌹 Rose / Rosa
+ Termux
    ↓
-B2
-   ↓ WebSocket
+   B2
+   ↓
 Minecraft Bedrock
    ↓
-TNTCoin
-   ↓
-🧟 Zombie
+interacción 
 ```
 
 B2 usa `tiktok-live-connector` para recibir eventos de TikTok LIVE y el protocolo WebSocket de Minecraft Bedrock para enviar `/scriptevent` al mundo. La librería de TikTok es no oficial y puede leer un LIVE público sin iniciar sesión.
@@ -30,7 +28,7 @@ npm install
 
 ## Iniciar
 
-Por defecto B2 usa `toshi.bs3` y el puerto `3000`:
+Por defecto B2 usa `@nombre de tu tik tok live` y el puerto `3000`:
 
 ```bash
 npm start
@@ -56,24 +54,13 @@ El protocolo WebSocket de Bedrock permite enviar comandos mediante paquetes `com
 
 ## Rosa → Zombie
 
-B2 detecta los regalos cuyo nombre sea `Rose` o `Rosa` y envía:
+B2 detecta los regalos cuyo nombre sea `rosa` o `popukar` y envía:
 
 ```text
 /scriptevent tntcoin:gift { ... }
 ```
 
 TNTCoin ya escucha `tntcoin:gift` y espera `username`, `nickname`, `giftName`, `giftId`, `repeatCount`, `giftType`, `diamondCount` y `repeatEnd`.
-
-Después, la acción **Gift** configurada en TNTCoin puede ser **Summon → minecraft:zombie**.
-
-## Estado
-
-- [x] Servidor WebSocket para Minecraft
-- [x] Conexión con TikTok LIVE
-- [x] Detección de Rose/Rosa
-- [x] Conversión a `tntcoin:gift`
-- [x] Reintento si TikTok está offline
-- [ ] Prueba real con un LIVE
-- [ ] Configuración final de Gift → Summon Zombie
+Zombie
 
 > Nota: TikTokLiveConnector no es una API oficial de TikTok; funciona leyendo el servicio Webcast interno de TikTok.
