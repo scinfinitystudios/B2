@@ -1,4 +1,4 @@
-# B2 🌹🧟
+# B2
 
 Puente ligero para conectar **TikTok LIVE con Minecraft Bedrock** desde Node.js/Termux.
 
@@ -52,15 +52,12 @@ Con B2 ejecutándose, abre el mundo de Minecraft con TNTCoin y ejecuta:
 
 El protocolo WebSocket de Bedrock permite enviar comandos mediante paquetes `commandRequest`; `/scriptevent` permite entregar un ID y un payload al sistema de scripts.
 
-## Rosa → Zombie
+## Regalo → interacción
 
 B2 detecta los regalos cuyo nombre sea `rosa` o `popukar` y envía:
 
 ```text
 /scriptevent tntcoin:gift { ... }
 ```
-
-TNTCoin ya escucha `tntcoin:gift` y espera `username`, `nickname`, `giftName`, `giftId`, `repeatCount`, `giftType`, `diamondCount` y `repeatEnd`.
-Zombie
 
 > Nota: TikTokLiveConnector no es una API oficial de TikTok; funciona leyendo el servicio Webcast interno de TikTok.
